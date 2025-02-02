@@ -26,10 +26,10 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="Noob Busts Scams",
-    description="A tool to combat digital scams with multi-user support",
-    version="1.0.0",
-    lifespan=lifespan
+    title=settings.PROJECT_NAME,
+    version=settings.PROJECT_VERSION,
+    lifespan=lifespan,
+    debug=settings.DEBUG
 )
 
 # Setup CORS
@@ -47,7 +47,7 @@ setup_monitoring(app, app_config.monitoring_config)
 
 # Include all API routes with prefix
 app.include_router(base_router, prefix="/api/v1")
-app.include_router(analysis_router, prefix="/api/v1")
+app.include_router(analysis_router, prefix=settings.API_V1_PREFIX)
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(user_router, prefix="/api/v1")
 
@@ -66,6 +66,13 @@ app.openapi_tags = [
         "description": "User management operations"
     }
 ]
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "environment": settings.ENVIRONMENT
+    }
 
 if __name__ == "__main__":
     import uvicorn

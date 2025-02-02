@@ -76,6 +76,7 @@ docs/_build/
 target/
 
 # Jupyter Notebook
+.cursor/rules/dd.mdc
 .ipynb_checkpoints
 
 # IPython

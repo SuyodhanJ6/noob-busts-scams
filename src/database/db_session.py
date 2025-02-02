@@ -1,27 +1,65 @@
-from contextlib import contextmanager
-from typing import Generator
+"""
+Database session management.
+"""
 
+from typing import AsyncGenerator, Generator
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.settings import settings
-from src.utils.database import Base
 
-# Create engine
-engine = create_engine(settings.DATABASE_URL)
+# Create async engine
+async_engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    future=True
+)
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create sync engine for non-async operations
+sync_engine = create_engine(
+    settings.DATABASE_URL.replace("+aiomysql", "+pymysql"),
+    echo=settings.DEBUG,
+    future=True
+)
 
-def init_db() -> None:
-    """Initialize database tables"""
-    Base.metadata.create_all(bind=engine)
+# Create session factories
+AsyncSessionLocal = sessionmaker(
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
-@contextmanager
+SessionLocal = sessionmaker(
+    sync_engine,
+    expire_on_commit=False
+)
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get async database session.
+    
+    Yields:
+        AsyncSession instance
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
 def get_db() -> Generator[Session, None, None]:
-    """Database session context manager"""
+    """
+    Get synchronous database session.
+    
+    Yields:
+        Session instance
+    """
     db = SessionLocal()
     try:
         yield db
     finally:
-        db.close() 
+        db.close()
+
+# Aliases for backward compatibility
+get_session = get_async_session 
