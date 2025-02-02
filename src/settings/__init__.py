@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.entity.config_ent import AppConfig, DatabaseConfig, ModelConfig, MonitoringConfig
+
 class Settings(BaseSettings):
     # API Settings
     DEBUG: bool = False
@@ -11,7 +13,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Noob Busts Scams"
     
     # CORS
-    ALLOWED_ORIGINS: str = "*"  # Changed to str to match .env
+    ALLOWED_ORIGINS: str = "*"
     
     # Security
     SECRET_KEY: str
@@ -51,6 +53,28 @@ class Settings(BaseSettings):
             return ["*"]
         return self.ALLOWED_ORIGINS.split(",")
     
+    @property
+    def get_app_config(self) -> AppConfig:
+        """Get application configuration using entity models"""
+        return AppConfig(
+            debug=self.DEBUG,
+            api_v1_prefix=self.API_V1_PREFIX,
+            project_name=self.PROJECT_NAME,
+            allowed_origins=self.CORS_ORIGINS,
+            model_config=ModelConfig(
+                model_name=self.GROQ_MODEL,
+                temperature=0.1
+            ),
+            db_config=DatabaseConfig(
+                url=self.DATABASE_URL
+            ),
+            monitoring_config=MonitoringConfig(
+                comet_api_key=self.COMET_API_KEY,
+                comet_workspace=self.COMET_WORKSPACE,
+                comet_project=self.COMET_PROJECT_NAME
+            )
+        )
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -62,3 +86,12 @@ def get_settings() -> Settings:
     return Settings()
 
 settings = get_settings()
+
+# Using direct settings
+db_url = settings.DATABASE_URL
+origins = settings.CORS_ORIGINS
+
+# Using entity-based config
+app_config = settings.get_app_config
+model_name = app_config.model_config.model_name
+db_config = app_config.db_config

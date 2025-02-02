@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from controller.service import BaseService
 from src.utils.validators import validate_phone_number
 from src.monitoring.opik import log_search
+from src.entity.config_ent import AppConfig
 
 router = APIRouter(prefix="/search", tags=["search"])
 

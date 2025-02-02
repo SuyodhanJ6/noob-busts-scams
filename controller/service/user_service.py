@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-from src.utils.auth import create_access_token
+from controller.service import BaseService
 from src.monitoring.opik import log_user_activity
 from src.entity.config_ent import AppConfig
 from src.logger import logger
@@ -30,15 +30,13 @@ class UserService(BaseService):
             # Create user
             new_user = await self.db.create_user(user)
             
-            # Generate token
-            token = create_access_token({"sub": new_user.id})
-            
             # Log activity
             log_user_activity(user_id=new_user.id, action="register")
             
             return {
-                "access_token": token,
-                "token_type": "bearer"
+                "user_id": new_user.id,
+                "email": new_user.email,
+                "name": new_user.name
             }
             
         except Exception as e:

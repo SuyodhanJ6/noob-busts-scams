@@ -1,13 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from fastapi import APIRouter, HTTPException, status
 from src.entity.config_ent import AppConfig
 from src.logger import logger
 from src.utils.rate_limiter import rate_limit
-from src.utils.validators import validate_phone_number
 
 router = APIRouter()
-security = HTTPBearer()
 
 @router.get("/health")
 async def health_check():
@@ -15,13 +11,25 @@ async def health_check():
     return {"status": "healthy"}
 
 class BaseService:
+    """Base service class with common functionality"""
+    
     def __init__(self, config: AppConfig):
         self.config = config
-        
-    async def authenticate(self, credentials: HTTPAuthorizationCredentials = Depends(security)):
-        """Validate API token"""
-        if not credentials or credentials.credentials != self.config.api_token:
+            
+    @property
+    def db(self):
+        """Database connection property"""
+        from src.database.db_session import get_db
+        return next(get_db())
+    
+    async def validate_request(self, request_data: dict):
+        """Common request validation"""
+        if not request_data:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Request data is required"
             )
+    
+    def log_error(self, error: Exception, context: str = ""):
+        """Centralized error logging"""
+        logger.error(f"Error in {context}: {str(error)}")

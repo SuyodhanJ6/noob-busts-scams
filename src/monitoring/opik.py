@@ -135,42 +135,132 @@
 
 #     return False
 
+import json
+import time
+from typing import Any, Dict, Optional
+
 from comet_ml import Experiment
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from loguru import logger
 
 from src.entity.config_ent import MonitoringConfig
 
-def setup_monitoring(app: FastAPI, config: MonitoringConfig) -> None:
-    """Setup Comet ML monitoring for the application"""
-    
-    if not config.enable_monitoring:
-        logger.warning("Monitoring is disabled")
-        return
-        
-    try:
-        experiment = Experiment(
+class LLMMonitoring:
+    def __init__(self, config: MonitoringConfig):
+        self.experiment = Experiment(
             api_key=config.comet_api_key,
             project_name=config.comet_project,
-            workspace=config.comet_workspace,
+            workspace=config.comet_workspace
         )
+        self.experiment.set_name("noob-busts-scams-monitoring")
         
-        @app.middleware("http")
-        async def monitoring_middleware(request, call_next):
-            # Start timing the request
-            start_time = time.time()
-            response = await call_next(request)
+    def log_llm_request(
+        self,
+        prompt: str,
+        completion: str,
+        model: str,
+        tokens: Dict[str, int],
+        duration: float,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Log LLM request details"""
+        try:
+            # Log prompt and completion
+            self.experiment.log_text(prompt, "prompt")
+            self.experiment.log_text(completion, "completion")
+            
+            # Log model details
+            self.experiment.log_parameter("model", model)
+            self.experiment.log_parameter("prompt_tokens", tokens.get("prompt_tokens", 0))
+            self.experiment.log_parameter("completion_tokens", tokens.get("completion_tokens", 0))
+            self.experiment.log_parameter("total_tokens", tokens.get("total_tokens", 0))
+            
+            # Log performance metrics
+            self.experiment.log_metric("response_time", duration)
+            
+            # Log additional metadata
+            if metadata:
+                self.experiment.log_parameters(metadata)
+                
+        except Exception as e:
+            logger.error(f"Failed to log LLM request: {str(e)}")
+
+    def log_search(self, phone_number: str, results_count: int):
+        """Log search operations"""
+        try:
+            self.experiment.log_parameter("search_query", phone_number)
+            self.experiment.log_metric("results_count", results_count)
+            self.experiment.log_metric("search_timestamp", time.time())
+        except Exception as e:
+            logger.error(f"Failed to log search: {str(e)}")
+
+    def log_user_activity(self, user_id: str, action: str, metadata: Optional[Dict[str, Any]] = None):
+        """Log user activities"""
+        try:
+            self.experiment.log_parameter("user_id", user_id)
+            self.experiment.log_parameter("action", action)
+            self.experiment.log_metric("activity_timestamp", time.time())
+            
+            if metadata:
+                self.experiment.log_parameters(metadata)
+        except Exception as e:
+            logger.error(f"Failed to log user activity: {str(e)}")
+
+# Create global monitoring instance
+_monitor: Optional[LLMMonitoring] = None
+
+def get_monitor(config: MonitoringConfig) -> LLMMonitoring:
+    """Get or create monitoring instance"""
+    global _monitor
+    if _monitor is None:
+        _monitor = LLMMonitoring(config)
+    return _monitor
+
+def setup_monitoring(app: FastAPI, config: MonitoringConfig) -> None:
+    """Setup monitoring middleware for FastAPI"""
+    if not config.enable_monitoring:
+        logger.info("Monitoring is disabled")
+        return
+        
+    monitor = get_monitor(config)
+    
+    @app.middleware("http")
+    async def monitoring_middleware(request: Request, call_next) -> Response:
+        start_time = time.time()
+        
+        body = None
+        if request.method in ["POST", "PUT"]:
+            try:
+                body = await request.json()
+            except:
+                pass
+                
+        response = await call_next(request)
+        
+        try:
             duration = time.time() - start_time
             
-            # Log metrics to Comet
-            experiment.log_metric("request_duration", duration)
-            experiment.log_metric("status_code", response.status_code)
-            experiment.log_parameter("endpoint", str(request.url))
+            monitor.experiment.log_parameter("endpoint", str(request.url))
+            monitor.experiment.log_parameter("method", request.method)
+            monitor.experiment.log_metric("response_time", duration)
+            monitor.experiment.log_metric("status_code", response.status_code)
             
-            return response
+            if body:
+                monitor.experiment.log_text(json.dumps(body), "request_body")
+                
+        except Exception as e:
+            logger.error(f"Failed to log request: {str(e)}")
             
-        logger.info("Comet ML monitoring setup completed")
-        
-    except Exception as e:
-        logger.error(f"Failed to setup monitoring: {str(e)}")
-        raise
+        return response
+
+# Convenience functions for external use
+def log_search(phone_number: str, results_count: int):
+    """Convenience function to log searches"""
+    if _monitor:
+        _monitor.log_search(phone_number, results_count)
+
+def log_user_activity(user_id: str, action: str, metadata: Optional[Dict[str, Any]] = None):
+    """Convenience function to log user activities"""
+    if _monitor:
+        _monitor.log_user_activity(user_id, action, metadata)
