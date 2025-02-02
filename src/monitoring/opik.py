@@ -134,3 +134,43 @@
 #         return True
 
 #     return False
+
+from comet_ml import Experiment
+from fastapi import FastAPI
+from loguru import logger
+
+from src.entity.config_ent import MonitoringConfig
+
+def setup_monitoring(app: FastAPI, config: MonitoringConfig) -> None:
+    """Setup Comet ML monitoring for the application"""
+    
+    if not config.enable_monitoring:
+        logger.warning("Monitoring is disabled")
+        return
+        
+    try:
+        experiment = Experiment(
+            api_key=config.comet_api_key,
+            project_name=config.comet_project,
+            workspace=config.comet_workspace,
+        )
+        
+        @app.middleware("http")
+        async def monitoring_middleware(request, call_next):
+            # Start timing the request
+            start_time = time.time()
+            response = await call_next(request)
+            duration = time.time() - start_time
+            
+            # Log metrics to Comet
+            experiment.log_metric("request_duration", duration)
+            experiment.log_metric("status_code", response.status_code)
+            experiment.log_parameter("endpoint", str(request.url))
+            
+            return response
+            
+        logger.info("Comet ML monitoring setup completed")
+        
+    except Exception as e:
+        logger.error(f"Failed to setup monitoring: {str(e)}")
+        raise

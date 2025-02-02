@@ -1,19 +1,25 @@
-FROM python:3.12.3-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-ENV UV_PROJECT_ENVIRONMENT="/usr/local/"
-ENV UV_COMPILE_BYTECODE=1
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-COPY uv.lock .
-RUN pip install --no-cache-dir uv
-RUN uv sync --frozen --no-install-project --no-dev
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
 
-COPY src/agents/ ./agents/
-COPY src/core/ ./core/
-COPY src/schema/ ./schema/
-COPY src/service/ ./service/
-COPY src/run_service.py .
+# Copy poetry files
+COPY pyproject.toml poetry.lock* ./
 
-CMD ["python", "run_service.py"]
+# Install dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi
+
+# Copy project
+COPY . .
+
+# Run the application
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
